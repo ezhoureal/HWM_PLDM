@@ -49,7 +49,7 @@ Figure 1b: Hierarchical planning improves success on non-greedy, long-horizon ta
 
 # Remote Setup
 
-The recommended remote dependency stack is Python 3.10, PyTorch 2.7.1, CUDA
+The recommended remote dependency stack is Python 3.12, PyTorch 2.9.1, CUDA
 12.8, and MuJoCo 2.1.0 for `mujoco-py` / D4RL. Use an NVIDIA driver that
 supports CUDA 12.8; a 570-series or newer driver is recommended.
 
@@ -59,11 +59,11 @@ cd HWM_PLDM
 export REPO_ROOT="$PWD"
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv --python /usr/local/bin/python --system-site-packages
 uv sync --frozen
 ```
 
-The project is pinned to Python 3.10 in `.python-version`. On Linux, `uv` uses
-the PyTorch CUDA 12.8 wheel index configured in `pyproject.toml`.
+The project is pinned to Python 3.12 in `.python-version`. In the PyTorch Docker image, create the uv environment with `--system-site-packages` so it reuses the image-provided `torch`, `triton`, and NVIDIA CUDA wheels instead of downloading them into `.venv`.
 
 If PyPI is slow from your remote region, configure a mirror before `uv sync`:
 
@@ -110,7 +110,7 @@ print("cuda runtime", torch.version.cuda)
 PY
 ```
 
-Expected output includes `torch 2.7.1+cu128`, `cuda available True`, and CUDA
+Expected output includes `torch 2.9.1+cu128`, `cuda available True`, and CUDA
 runtime `12.8`.
 
 ## Download Checkpoints and Data
