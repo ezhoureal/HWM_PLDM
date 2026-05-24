@@ -58,21 +58,17 @@ git clone git@github.com:kevinghst/HWM_PLDM.git
 cd HWM_PLDM
 export REPO_ROOT="$PWD"
 
-conda create -n pldm python=3.10 -y
-conda activate pldm
-
-python -m pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
-  --index-url https://download.pytorch.org/whl/cu128
-
-pip install -r requirements.txt
-pip install -e .
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync --frozen
 ```
 
-If PyPI is slow from your remote region, configure a mirror before the `pip`
-commands:
+The project is pinned to Python 3.10 in `.python-version`. On Linux, `uv` uses
+the PyTorch CUDA 12.8 wheel index configured in `pyproject.toml`.
+
+If PyPI is slow from your remote region, configure a mirror before `uv sync`:
 
 ```bash
-pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+uv sync --frozen --index-url https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 ## MuJoCo 2.1 for D4RL + mujoco-py
@@ -106,7 +102,7 @@ EOF
 
 ```bash
 cd "$REPO_ROOT"
-python - <<'PY'
+uv run python - <<'PY'
 import torch
 print("torch", torch.__version__)
 print("cuda available", torch.cuda.is_available())
@@ -114,8 +110,8 @@ print("cuda runtime", torch.version.cuda)
 PY
 ```
 
-Expected output includes `torch 2.7.1`, `cuda available True`, and CUDA runtime
-`12.8`.
+Expected output includes `torch 2.7.1+cu128`, `cuda available True`, and CUDA
+runtime `12.8`.
 
 ## Download Checkpoints and Data
 
