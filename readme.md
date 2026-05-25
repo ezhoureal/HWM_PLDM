@@ -76,6 +76,50 @@ export MUJOCO_GL=egl
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin"
 export D4RL_SUPPRESS_IMPORT_ERROR=1
 
+## Setup caveats when using `uv`
+
+The repository works with a `uv` virtual environment, but a few extra runtime
+details may be needed beyond `uv pip install -r requirements.txt` and
+`uv pip install -e .`:
+
+- The helper download scripts require `huggingface_hub`. Install it if it is
+  missing:
+  ```
+  uv pip install huggingface_hub
+  ```
+- `mujoco_py` checks `LD_LIBRARY_PATH` at import time. Run rendering/evaluation
+  commands with the MuJoCo 2.1 runtime variables exported in the same shell:
+  ```
+  export MUJOCO_GL=egl
+  export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin"
+  export D4RL_SUPPRESS_IMPORT_ERROR=1
+  ```
+- On headless systems, `mujoco_py` may try to build against OSMesa and fail on
+  `GL/osmesa.h` or `libOSMesa.so`. Install the Mesa OSMesa development package
+  if you have sudo, for example `libosmesa6-dev` on Ubuntu. If you do not have
+  sudo, unpacking the relevant `.deb` packages into a local sysroot and exporting
+  `CPATH`, `LIBRARY_PATH`, and `LD_LIBRARY_PATH` to that sysroot also works.
+- `mujoco_py` also calls `patchelf` after compiling its extension. If `patchelf`
+  is not available on `PATH`, install the Python-packaged executable:
+  ```
+  uv pip install patchelf
+  ```
+- The provided maze configs contain original `/scratch/...` paths. For local
+  evaluation, override `root_path`, checkpoint paths, and image paths with
+  `--values`, or edit the configs before running `pldm/train.py`.
+- The Hugging Face maze dataset snapshot contains proprioceptive data and
+  evaluation starts/targets, but not pre-rendered `images.npy`. Rendering the
+  image observations can take a while. The renderer skips PNGs that already
+  exist, so interrupted renders can be resumed safely. A reusable resumable
+  helper is available:
+  ```
+  scripts/render_diverse_maze_images.sh --postprocess
+  ```
+  By default this renders the local probe dataset with a small parallel pool and
+  then runs `postprocess_images.py` to create `images.npy`. Use `--data-path`,
+  `--parallel`, `--start`, and `--end` to target other maze dataset directories
+  or tune cloud jobs.
+
 # Run Experiments
 
 1. Go to `pldm_envs/`, follow instructions to set up dataset for the environment of your choice
