@@ -73,11 +73,15 @@ To evaluate flat planning on the downloaded PLDM ckpt:
 python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --values eval_only=true load_checkpoint_path=$REPO_ROOT/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
 ```
 
-## Offline L1 Planner-to-Policy Distillation
+## Offline Latent Planner-to-Policy Distillation
 
-The first policy-compilation path distills the expensive L1 sub-trajectory
-planner used inside hierarchical MPC. It collects latent supervision of the
-form:
+The policy-compilation path now uses shared latent-policy and trace-collector
+modules for both hierarchy levels.
+
+### L1 policy
+
+The L1 policy distills the expensive sub-trajectory planner used inside
+hierarchical MPC. It collects latent supervision of the form:
 
 ```
 (current_l1_latent, l2_subgoal_latent, final_goal_latent) -> primitive_action_sequence
@@ -113,6 +117,41 @@ Train the offline latent L1 policy from that trace file:
 python train_l1_policy.py \
   --trace_path $REPO_ROOT/checkpoint/policy_traces/l1_latent_medium.pt \
   --output_path $REPO_ROOT/checkpoint/policies/l1_latent_policy.pt
+```
+
+### L2 policy
+
+The L2 policy distills the first latent macro-action selected at each
+hierarchical replanning step:
+
+```
+(current_l2_latent, final_goal_latent) -> next_l2_latent_action
+```
+
+Only the first latent action is supervised because hierarchical MPC replans
+after each L1 segment, so that is the part of the L2 plan that is actually
+consumed online.
+
+Collect traces alongside the same hierarchical eval by setting
+`eval_cfg.h_d4rl_planning.l2_policy_trace_path`:
+
+```
+python train.py \
+  --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
+  --values \
+    eval_only=true \
+    load_l1_only=false \
+    load_checkpoint_path=$REPO_ROOT/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt \
+    eval_cfg.h_d4rl_planning.l2_policy_trace_path=$REPO_ROOT/checkpoint/policy_traces/l2_latent_medium.pt \
+    eval_cfg.h_d4rl_planning.l2_policy_trace_success_only=true
+```
+
+Train the offline latent L2 policy from that trace file:
+
+```
+python train_l2_policy.py \
+  --trace_path $REPO_ROOT/checkpoint/policy_traces/l2_latent_medium.pt \
+  --output_path $REPO_ROOT/checkpoint/policies/l2_latent_policy.pt
 ```
 
 To train the HWM (2 levels) on the large-maze setting by loading the downloaded level 1 PLDM model , run:

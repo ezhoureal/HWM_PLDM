@@ -52,17 +52,11 @@ Figure 1b: Hierarchical planning improves success on non-greedy, long-horizon ta
 Tested on python 3.9, CUDA 13.0
 
 ```
-git clone git@github.com:kevinghst/HWM_PLDM.git
+uv venv --python 3.9 --system-site-packages
 
-cd HWM_PLDM
+uv pip install -r requirements.txt
 
-conda create -n pldm python=3.9 -y
-
-conda activate pldm
-
-pip install -r requirements.txt
-
-pip install -e .
+uv pip install -e .
 ```
 
 ## MuJoCo 2.1 for d4rl + mujoco-py

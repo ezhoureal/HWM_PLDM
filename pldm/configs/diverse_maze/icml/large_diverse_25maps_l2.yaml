@@ -189,8 +189,14 @@ eval_cfg:
     plot_every: 16
     action_repeat: 4
     action_repeat_mode: 'id'
-    use_l1_policy: true
+    l1_policy_trace_path: null
+    l1_policy_trace_success_only: true
+    l2_policy_trace_path: null
+    l2_policy_trace_success_only: true
+    use_l1_policy: false
     l1_policy_checkpoint_path: "${root_path}/checkpoint/policies/l1_latent_policy.pt"
+    use_l2_policy: false
+    l2_policy_checkpoint_path: "${root_path}/checkpoint/policies/l2_latent_policy.pt"
     img_size: 98
     replan_every: *l2_step_skip
     policy_trace_checkpoint_every: 5

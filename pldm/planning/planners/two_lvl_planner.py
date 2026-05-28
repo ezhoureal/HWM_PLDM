@@ -7,6 +7,7 @@ class TwoLvlPlanningResult(NamedTuple):
     level1: PlanningResult
     level2: PlanningResult
     l1_policy_trace: Optional[dict] = None
+    l2_policy_trace: Optional[dict] = None
 
 
 class TwoLvlPlanner:
@@ -50,11 +51,16 @@ class TwoLvlPlanner:
         backbone_output = self.l1_planner.model.backbone(
             current_state.cuda(), proprio=proprio_l1, locations=locations_cuda
         )
+        l2_plan_kwargs = {
+            "current_state": backbone_output,
+            "plan_size": plan_size,
+            "repr_input": True,
+        }
+        if getattr(self.l2_planner, "is_policy_planner", False):
+            l2_plan_kwargs["final_goal_latents"] = self.final_goal_latents.detach()
         l2_result = self.l2_planner.plan(
-            current_state=backbone_output,
-            plan_size=plan_size,
-            repr_input=True,
             # diff_loss_idx=diff_loss_idx.to(enc2.device),
+            **l2_plan_kwargs,
         )
 
         if mock_l1:
@@ -105,8 +111,15 @@ class TwoLvlPlanner:
         if l2_result.locations is not None:
             l1_policy_trace["subgoal_locations"] = l2_result.locations[1].detach()
 
+        l2_policy_trace = {
+            "current_latents": backbone_output.obs_component.detach(),
+            "final_goal_latents": self.final_goal_latents.detach(),
+            "actions": l2_result.actions[:, :1].detach(),
+        }
+
         return TwoLvlPlanningResult(
             level1=l1_result,
             level2=l2_result,
             l1_policy_trace=l1_policy_trace,
+            l2_policy_trace=l2_policy_trace,
         )

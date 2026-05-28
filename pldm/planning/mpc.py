@@ -5,11 +5,12 @@ from pldm.models.hjepa import HJEPA
 from pldm_envs.utils.normalizer import Normalizer
 from pldm.planning.planners.enums import PlannerType
 from pldm.planning.planners.l1_policy_planner import L1PolicyPlanner
+from pldm.planning.planners.l2_policy_planner import L2PolicyPlanner
 from pldm.planning.planners.mppi_planner import MPPIPlanner
 from pldm.planning.planners.two_lvl_planner import TwoLvlPlanner
 from pldm.planning.utils import normalize_actions
 from abc import ABC
-from pldm.planning.enums import MPCResult, PooledMPCResult
+from pldm.planning.enums import MPCConfig, MPCResult, PooledMPCResult
 import numpy as np
 from pldm.models.utils import flatten_conv_output
 from tqdm import tqdm
@@ -66,8 +67,8 @@ class MPCEvaluator(ABC):
         return chunk_sizes
 
     def _construct_h_planner(self, n_envs: int):
-        if getattr(self.config, "use_l1_policy", False):
-            checkpoint_path = getattr(self.config, "l1_policy_checkpoint_path", None)
+        if self.config.use_l1_policy:
+            checkpoint_path = self.config.l1_policy_checkpoint_path
             if not checkpoint_path:
                 raise ValueError(
                     "Hierarchical MPC is configured to use the L1 latent policy, "
@@ -79,13 +80,29 @@ class MPCEvaluator(ABC):
                 normalizer=self.normalizer,
                 prober=self.prober,
             )
+            print(f'constructed L1PolicyPlanner for hierarchical MPC with checkpoint {checkpoint_path}')
         else:
             l1_planner = self._construct_planner(n_envs=n_envs, l1_to_l2=True)
 
-        l2_planner = self._construct_planner(
-            n_envs=n_envs,
-            l2=True,
-        )
+        if self.config.use_l2_policy:
+            checkpoint_path = self.config.l2_policy_checkpoint_path
+            if not checkpoint_path:
+                raise ValueError(
+                    "Hierarchical MPC is configured to use the L2 latent policy, "
+                    "but no l2_policy_checkpoint_path was provided."
+                )
+            l2_planner = L2PolicyPlanner(
+                checkpoint_path=checkpoint_path,
+                model=self.model.level2,
+                normalizer=self.normalizer,
+                prober=self.prober_l2,
+            )
+            print(f'constructed L2PolicyPlanner for hierarchical MPC with checkpoint {checkpoint_path}')
+        else:
+            l2_planner = self._construct_planner(
+                n_envs=n_envs,
+                l2=True,
+            )
 
         h_planner = TwoLvlPlanner(
             l1_planner=l1_planner,
@@ -201,6 +218,14 @@ class MPCEvaluator(ABC):
                     )
                     for trace in mpc_result.l1_policy_traces:
                         trace["env_indices"] = env_indices
+                if mpc_result.l2_policy_traces:
+                    env_indices = torch.arange(
+                        chunk_offset,
+                        chunk_offset + chunk_size,
+                        dtype=torch.long,
+                    )
+                    for trace in mpc_result.l2_policy_traces:
+                        trace["env_indices"] = env_indices
             else:
                 mpc_result = self._perform_mpc(
                     planner=planner,
@@ -229,6 +254,7 @@ class MPCEvaluator(ABC):
             mpc_data.visual_observations.append(mpc_result.visual_observations)
             mpc_data.visual_targets.append(mpc_result.visual_targets)
             mpc_data.l1_policy_traces.append(mpc_result.l1_policy_traces or [])
+            mpc_data.l2_policy_traces.append(mpc_result.l2_policy_traces or [])
 
             # for hierarchy
             if self.hierarchical:
@@ -295,6 +321,7 @@ class MPCEvaluator(ABC):
                 + mpc_result_2.visual_observations[1:],
                 visual_targets=mpc_result_1.visual_targets,
                 l1_policy_traces=mpc_result_1.l1_policy_traces,
+                l2_policy_traces=mpc_result_1.l2_policy_traces,
             )
         else:
             mpc_result = mpc_result_1
@@ -434,6 +461,7 @@ class MPCEvaluator(ABC):
         pred_locations_l2_history = []
         loss_history_l2 = []
         l1_policy_traces = []
+        l2_policy_traces = []
         completed_l1_policy_traces = 0
 
         init_infos = [e.get_info() for e in envs]
@@ -529,6 +557,14 @@ class MPCEvaluator(ABC):
                         dtype=torch.long,
                     )
                     l1_policy_traces.append(trace)
+                    l2_trace = planning_result.l2_policy_trace
+                    l2_trace["start_step"] = i
+                    l2_trace["env_indices"] = torch.arange(
+                        chunk_offset,
+                        chunk_offset + len(envs),
+                        dtype=torch.long,
+                    )
+                    l2_policy_traces.append(l2_trace)
                     planning_result_l2 = planning_result.level2
                     planning_result = planning_result.level1
 
@@ -659,6 +695,15 @@ class MPCEvaluator(ABC):
             self.normalizer.unnormalize_state(o) for o in observation_history
         ]
 
+        if bilevel_planning and l2_policy_traces:
+            episode_success = self._compute_episode_success(
+                reward_history=reward_history,
+                success_history=success_history,
+                batch_size=len(envs),
+            )
+            for trace in l2_policy_traces:
+                trace["episode_success"] = episode_success.clone()
+
         self.model.train(orig_training_state)
 
         # put everything on cpu
@@ -685,7 +730,24 @@ class MPCEvaluator(ABC):
             visual_observations=[torch.from_numpy(x) for x in visual_observations],
             visual_targets=visual_targets,
             l1_policy_traces=l1_policy_traces,
+            l2_policy_traces=l2_policy_traces,
         )
+
+    def _compute_episode_success(
+        self,
+        reward_history: list,
+        success_history: list,
+        batch_size: int,
+    ) -> torch.Tensor:
+        if success_history:
+            success_tensor = torch.stack([torch.from_numpy(x) for x in success_history]).bool()
+            return success_tensor.any(dim=0).cpu()
+
+        if reward_history:
+            reward_tensor = torch.stack([x.cpu() for x in reward_history])
+            return reward_tensor.gt(0).any(dim=0)
+
+        return torch.zeros(batch_size, dtype=torch.bool)
 
     def _annotate_l1_policy_trace_subgoal_success(
         self,

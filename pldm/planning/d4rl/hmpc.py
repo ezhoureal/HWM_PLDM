@@ -15,6 +15,7 @@ from pldm.planning.enums import PooledMPCResult
 from pldm.planning.planners.enums import PlannerType
 from pldm.utils import format_seconds
 from pldm.policy.l1 import save_l1_planning_trace
+from pldm.policy.l2 import save_l2_planning_trace
 from pldm_envs.diverse_maze.utils import PixelMapper
 
 
@@ -64,6 +65,18 @@ class HierarchicalD4RLMPCEvaluator(MazeMPCEvaluator):
                 )
             except ValueError as exc:
                 print(f"skipping final L1 policy trace save: {exc}")
+
+        if self.config.l2_policy_trace_path:
+            try:
+                save_l2_planning_trace(
+                    data.l2_policy_traces,
+                    self.config.l2_policy_trace_path,
+                    max_samples=self.config.l2_policy_trace_max_samples,
+                    source=self.prefix,
+                    success_only=self.config.l2_policy_trace_success_only,
+                )
+            except ValueError as exc:
+                print(f"skipping final L2 policy trace save: {exc}")
 
         elapsed_time = int(time.time() - start_time)
         print(f"hierarchical d4rl planning took {format_seconds(elapsed_time)}")

@@ -5,11 +5,11 @@ from typing import Optional, Union
 import torch
 
 from pldm.models.encoders.enums import BackboneOutput
-from pldm.policy.l1 import load_policy_checkpoint
+from pldm.policy.l2 import load_policy_checkpoint
 from pldm.planning.planners.latent_policy_planner import LatentPolicyPlanner
 
 
-class L1PolicyPlanner(LatentPolicyPlanner):
+class L2PolicyPlanner(LatentPolicyPlanner):
     def __init__(self, checkpoint_path: str, model, normalizer, prober=None):
         super().__init__(
             checkpoint_path=checkpoint_path,
@@ -28,22 +28,13 @@ class L1PolicyPlanner(LatentPolicyPlanner):
         curr_proprio_pos: Optional[torch.Tensor] = None,
         curr_proprio_vel: Optional[torch.Tensor] = None,
         curr_locations: Optional[torch.Tensor] = None,
-        subgoal_latents: Optional[torch.Tensor] = None,
         final_goal_latents: Optional[torch.Tensor] = None,
         diff_loss_idx: Optional[torch.Tensor] = None,
     ):
-        del diff_loss_idx
+        del diff_loss_idx, plan_size
 
-        if subgoal_latents is None or final_goal_latents is None:
-            raise ValueError(
-                "L1PolicyPlanner requires subgoal_latents and final_goal_latents."
-            )
-
-        if plan_size > self.policy.config.horizon:
-            raise ValueError(
-                f"L1 policy horizon {self.policy.config.horizon} is smaller than "
-                f"requested plan_size {plan_size}."
-            )
+        if final_goal_latents is None:
+            raise ValueError("L2PolicyPlanner requires final_goal_latents.")
 
         self.dynamics.before_planning_callback()
         try:
@@ -55,16 +46,11 @@ class L1PolicyPlanner(LatentPolicyPlanner):
                 curr_locations=curr_locations,
             )
 
-            actions = self.policy(
+            action = self.policy(
                 backbone_output.obs_component.detach(),
-                subgoal_latents.to(self.device).detach(),
                 final_goal_latents.to(self.device).detach(),
-            )[:, :plan_size]
-            normalized_actions = self.normalizer.normalize_action(actions)
-            return self._build_planning_result(
-                backbone_output,
-                actions,
-                dynamics_actions=normalized_actions,
             )
+            actions = action.unsqueeze(1)
+            return self._build_planning_result(backbone_output, actions)
         finally:
             self.dynamics.after_planning_callback()
