@@ -173,10 +173,6 @@ I would frame the central hypothesis as:
 
 > **Can hierarchical latent planning automatically compile itself into reusable reactive skills, while preserving the ability to fall back to planning on novel states?**
 
-That is a stronger paper than:
-
-> “We distill HWM into a policy.”
-
 Because it introduces:
 
 * automatic planner invocation,
@@ -199,57 +195,137 @@ The nearest ancestors are:
 
 So your idea sits at the intersection of these, but the **HWM/PLDM + automatic Mode-1 consolidation** angle still seems underexplored.
 
-## What I would implement first
+## Implementation status in this repo
 
-A minimal version could be:
+We have now implemented a first working slice of this idea inside the PLDM/HWM
+codebase.
 
-1. Use HWM/PLDM as the teacher planner.
-2. Train a subgoal-conditioned policy:
+### Implemented
 
-[
-\pi_{\text{low}}(z_t, z_{\text{subgoal}}) \rightarrow a_t
-]
+1. **Shared latent policy module**
 
-3. Add a confidence gate:
+   We refactored a generic latent-policy stack that is shared by both hierarchy
+   levels instead of keeping separate ad hoc codepaths.
 
-   * use policy when confident;
-   * otherwise call planner.
-4. Add DAgger-style relabeling:
+   Current pieces:
 
-   * when policy fails or visits novel states, query planner.
-5. Measure:
+   * shared latent MLP policy core,
+   * shared latent trace dataset loader,
+   * shared trace flatten/save utilities,
+   * shared training entrypoint with level-specific wrappers.
 
-   * success rate,
-   * planning calls per episode,
-   * latency,
-   * generalization to unseen mazes/tasks,
-   * whether policy gradually replaces planner.
+2. **L1 policy distillation**
 
-The cleanest empirical curve would be:
+   The L1 planner can already be distilled offline from hierarchical MPC traces.
 
-> planning calls decrease over training while success rate remains high.
+   Current supervision:
 
-That would demonstrate automatic compilation from deliberate planning into reactive skill.
+   [
+   (z_t^{l1}, z_{\text{subgoal}}^{l2}, z_g^{l1}) \rightarrow a_{t:t+H-1}
+   ]
 
-## The punchline
+   That policy is trained by behavior cloning and can already be used at
+   inference time through a dedicated `L1PolicyPlanner` that replaces the online
+   L1 planner.
 
-Yes — I think this is a genuinely promising direction.
+3. **L2 policy distillation**
 
-The crisp name could be something like:
+   We now also collect and train an L2 policy.
 
-**Hierarchical Planner-to-Policy Consolidation**
+   Importantly, the current design predicts **only the first L2 latent action**,
+   not an entire latent-action sequence. This matches the hierarchical MPC loop
+   more closely, because only the first L2 action is consumed before replanning.
 
-or more cognitively:
+   Current supervision:
 
-**From Deliberation to Habit: Amortizing Hierarchical World-Model Planning into Reactive Policies**
+   [
+   (z_t^{l2}, z_g^{l2}) \rightarrow u_t^{l2}
+   ]
 
-The key insight is:
+   where (u_t^{l2}) is the first latent macro-action chosen by the L2 planner.
 
-> A world-model planner should not merely choose actions. It should produce training data for its own future intuition.
+4. **Inference-side L2 policy planner**
 
-That is very LeCun-compatible, biologically inspired, and technically implementable.
+   We added an `L2PolicyPlanner` for inference. It:
 
-[1]: https://arxiv.org/abs/2307.12933?utm_source=chatgpt.com "Theoretically Guaranteed Policy Improvement Distilled from Model-Based Planning"
-[2]: https://aclanthology.org/P18-1203/?utm_source=chatgpt.com "Deep Dyna-Q: Integrating Planning for Task-Completion ..."
-[3]: https://pmc.ncbi.nlm.nih.gov/articles/PMC4526597/?utm_source=chatgpt.com "Model-based learning protects against forming habits - PMC"
-[4]: https://pmc.ncbi.nlm.nih.gov/articles/PMC9004662/?utm_source=chatgpt.com "Learning Structures: Predictive Representations, Replay, and ..."
+   * loads a trained L2 policy checkpoint,
+   * predicts one latent macro-action,
+   * rolls that single latent action through the L2 world model,
+   * returns the predicted first subgoal latent for the downstream L1 policy or
+     planner.
+
+5. **Latent trace collection**
+
+   Hierarchical evaluation can now save both:
+
+   * L1 latent-policy traces,
+   * L2 latent-policy traces.
+
+   The L1 trace path is filtered by **subgoal success** for each L1 segment.
+   The L2 trace path is filtered by **episode success**.
+
+### Partially implemented
+
+1. **Planner-to-policy compilation**
+
+   We do have planner trace collection, offline policy training, and inference
+   substitution for both L1 and L2.
+
+   So the basic pipeline
+
+   > plan -> store traces -> train policy -> reuse policy at inference
+
+   is now implemented.
+
+2. **Automatic cognitive compilation**
+
+   The broader autonomous loop is still only partially implemented.
+
+   What exists:
+
+   * hierarchical planner as teacher,
+   * offline consolidation into L1/L2 policies,
+   * optional policy use at inference.
+
+   What does **not** yet exist:
+
+   * automatic uncertainty-based arbitration between policy and planner,
+   * automatic fallback from policy to planner on novel states,
+   * continual online relabeling / DAgger-style correction,
+   * replay scheduling based on novelty, confidence, or usefulness,
+   * long-term skill memory management.
+
+### Current limitations / observations
+
+1. **L1 speedup is limited so far**
+
+   We already implemented the L1 policy according to the design, but the
+   wall-clock speedup effect has not been very strong yet. That is one reason we
+   moved on to L2 compilation, since replacing high-level latent planning has a
+   better chance of reducing total planning cost.
+
+2. **L2 is currently single-step reactive, not full-horizon**
+
+   This is intentional for now. Predicting only the first L2 action keeps the
+   training target aligned with actual MPC usage, but it also means we are not
+   yet compiling an entire high-level plan into one policy forward pass.
+
+3. **No policy gate yet**
+
+   At the moment, whether to use the policy is configured manually
+   (`use_l1_policy`, `use_l2_policy`) rather than decided by uncertainty or
+   novelty.
+
+### Immediate next steps
+
+The most important next experiments are:
+
+1. evaluate `use_l2_policy=true` with `use_l1_policy=false` to isolate whether
+   L2 compilation gives meaningful speedup;
+2. compare success rate vs planning latency for:
+   * full hierarchical MPC,
+   * L1 policy only,
+   * L2 policy only,
+   * both L1 and L2 policies;
+3. add a gating mechanism so the agent can choose between reactive execution
+   and planning instead of relying on a fixed config switch.
