@@ -54,14 +54,14 @@ class HierarchicalD4RLMPCEvaluator(MazeMPCEvaluator):
 
         data = self._perform_mpc_in_chunks()
 
-        if self.config.policy_trace_path:
+        if self.config.l1_policy_trace_path:
             try:
                 save_l1_planning_trace(
                     data.l1_policy_traces,
-                    self.config.policy_trace_path,
+                    self.config.l1_policy_trace_path,
                     max_samples=self.config.policy_trace_max_samples,
                     source=self.prefix,
-                    success_only=self.config.policy_trace_success_only,
+                    success_only=self.config.l1_policy_trace_success_only,
                 )
             except ValueError as exc:
                 print(f"skipping final L1 policy trace save: {exc}")

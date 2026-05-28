@@ -13,7 +13,7 @@ Which will download two ckpts:
 To evaluate hierarchical planning on the downloaded HWM ckpt:
 
 ```
-python train.py --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml --values eval_only=true load_l1_only=false load_checkpoint_path=/workspace/HWM_PLDM/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt
+python train.py --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml
 ```
 
 ### Probe-data HWM evaluation caveats
@@ -30,9 +30,6 @@ Full command used for the HWM L2 probe eval:
 python train.py \
   --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
   --values \
-    eval_only=true \
-    load_l1_only=false \
-    load_checkpoint_path=/workspace/HWM_PLDM/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt \
     output_dir=policy_model_eval \
     eval_cfg.probing.load_prober_l2=true \
     eval_cfg.probing.visualize_probing=false
@@ -70,7 +67,7 @@ Caveats encountered while reproducing:
 To evaluate flat planning on the downloaded PLDM ckpt:
 
 ```
-python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --values eval_only=true load_checkpoint_path=$REPO_ROOT/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
+python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --values load_checkpoint_path=$REPO_ROOT/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
 ```
 
 ## Offline Latent Planner-to-Policy Distillation
@@ -95,17 +92,14 @@ replace the online L1 planner at runtime when
 checkpoint.
 
 Collect traces from a hierarchical HWM planning eval by setting
-`eval_cfg.h_d4rl_planning.policy_trace_path`:
+`eval_cfg.h_d4rl_planning.l1_policy_trace_path`:
 
 ```
 python train.py \
   --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
   --values \
-    eval_only=true \
-    load_l1_only=false \
-    load_checkpoint_path=$REPO_ROOT/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt \
-    eval_cfg.h_d4rl_planning.policy_trace_path=$REPO_ROOT/checkpoint/policy_traces/l1_latent_medium.pt \
-    eval_cfg.h_d4rl_planning.policy_trace_success_only=true
+    eval_cfg.h_d4rl_planning.l1_policy_trace_path=$REPO_ROOT/checkpoint/policy_traces/l1_latent_medium.pt \
+    eval_cfg.h_d4rl_planning.policy_trace_success_only=true wandb=false
 ```
 
 By default, traces are filtered to keep only episodes that eventually reached
@@ -139,11 +133,8 @@ Collect traces alongside the same hierarchical eval by setting
 python train.py \
   --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
   --values \
-    eval_only=true \
-    load_l1_only=false \
-    load_checkpoint_path=$REPO_ROOT/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt \
     eval_cfg.h_d4rl_planning.l2_policy_trace_path=$REPO_ROOT/checkpoint/policy_traces/l2_latent_medium.pt \
-    eval_cfg.h_d4rl_planning.l2_policy_trace_success_only=true
+    eval_cfg.h_d4rl_planning.l2_policy_trace_success_only=true wandb=false
 ```
 
 Train the offline latent L2 policy from that trace file:

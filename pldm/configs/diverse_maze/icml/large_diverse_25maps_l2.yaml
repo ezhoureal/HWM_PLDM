@@ -4,7 +4,7 @@ l2_step_skip: &l2_step_skip 10
 l2_n_steps: &l2_n_steps 6
 env_name: &env_name maze2d_large_diverse
 train_l1: &train_l1 false
-load_l1_only: true
+load_l1_only: false
 root_path: &root_path /workspace/HWM_PLDM
 
 base_lr: 0.017632900482959527
@@ -108,7 +108,7 @@ hjepa:
     encode_only: false
     use_z_goal: false
     action_dim: 0
-load_checkpoint_path: ${root_path}/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
+load_checkpoint_path: ${root_path}/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt
 objectives_l2:
   objectives:
   - ObjectiveType.PredictionObs
@@ -173,7 +173,7 @@ eval_cfg:
     full_finetune: false
     lr: 0.0032
     schedule: Cosine
-    visualize_probing: true
+    visualize_probing: false
     load_prober: false
   h_d4rl_planning:
     env_name: *env_name
@@ -191,7 +191,7 @@ eval_cfg:
     action_repeat_mode: 'id'
     l1_policy_trace_path: null
     l1_policy_trace_success_only: true
-    l2_policy_trace_path: null
+    l2_policy_trace_path: "${root_path}/checkpoint/policy_traces/l2_latent.pt"
     l2_policy_trace_success_only: true
     use_l1_policy: false
     l1_policy_checkpoint_path: "${root_path}/checkpoint/policies/l1_latent_policy.pt"

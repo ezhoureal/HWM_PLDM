@@ -48,8 +48,8 @@ class MPCConfig(ConfigBase):
     l1_policy_checkpoint_path: Optional[str] = None
     use_l2_policy: bool = False
     l2_policy_checkpoint_path: Optional[str] = None
-    policy_trace_path: Optional[str] = None
-    policy_trace_success_only: bool = True
+    l1_policy_trace_path: Optional[str] = None
+    l1_policy_trace_success_only: bool = True
     policy_trace_max_samples: Optional[int] = None
     policy_trace_checkpoint_every: int = 5
     policy_trace_subgoal_threshold: Optional[float] = None

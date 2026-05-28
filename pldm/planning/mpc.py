@@ -485,7 +485,7 @@ class MPCEvaluator(ABC):
         elif bilevel_planning:
             step_skip = self.model.config.step_skip
             if (
-                self.config.policy_trace_path
+                self.config.l1_policy_trace_path
                 and self.config.replan_every != step_skip
             ):
                 raise ValueError(
@@ -789,7 +789,7 @@ class MPCEvaluator(ABC):
         chunk_offset: int,
         final: bool = False,
     ):
-        if not self.config.policy_trace_path:
+        if not self.config.l1_policy_trace_path:
             return
         checkpoint_every = max(int(self.config.policy_trace_checkpoint_every or 0), 0)
         if checkpoint_every == 0:
@@ -801,7 +801,7 @@ class MPCEvaluator(ABC):
         if not completed_traces:
             return
 
-        output_path = Path(self.config.policy_trace_path)
+        output_path = Path(self.config.l1_policy_trace_path)
         checkpoint_path = output_path.with_name(
             f"{output_path.stem}.chunk{chunk_offset:05d}.partial{output_path.suffix}"
         )
@@ -811,7 +811,7 @@ class MPCEvaluator(ABC):
                 str(checkpoint_path),
                 max_samples=self.config.policy_trace_max_samples,
                 source=f"{self.prefix}_partial",
-                success_only=self.config.policy_trace_success_only,
+                success_only=self.config.l1_policy_trace_success_only,
             )
         except ValueError as exc:
             print(f"skipping partial L1 policy trace checkpoint: {exc}")
