@@ -5,14 +5,14 @@ l2_n_steps: &l2_n_steps 6
 env_name: &env_name maze2d_large_diverse
 train_l1: &train_l1 false
 load_l1_only: true
-root_path: &root_path /scratch/wz1232/HWM_PLDM
+root_path: &root_path /workspace/HWM_PLDM
 
 base_lr: 0.017632900482959527
 data:
   normalize: true
   dataset_type: DatasetType.D4RL
-  num_workers: 12
-  prefetch_factor: 6
+  num_workers: 1
+  prefetch_factor: 2
   normalizer_hardset: true
   d4rl_config:
     train_l1: *train_l1
@@ -23,8 +23,8 @@ data:
     batch_size: 128
     beta: 0.4
     crop_length: null
-    images_path: /scratch/wz1232/data/maze2d_large_diverse_25maps/images.npy
-    path: ${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps/data.p
+    images_path: ${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/images.npy
+    path: ${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/data.p
     location_only: false
     num_workers: 12
     prioritized: false
@@ -42,7 +42,7 @@ eval_at_beginning: false
 eval_during_training: false
 eval_every_n_epochs: 2
 eval_mpcs: 20
-eval_only: false
+eval_only: true
 hjepa:
   l1_n_steps: *n_steps
   train_l1: *train_l1
@@ -133,7 +133,7 @@ objectives_l2:
   prediction_obs:
     global_coeff: 2.416154262252218
 optimizer_type: Adam
-output_dir: maze2d_large_diverse
+output_dir: maze2d_large_diverse_policy
 output_root: ${root_path}/checkpoint/maze2d_large_diverse/l2_wo_encoder
 eval_cfg:
   env_name: *env_name
@@ -147,9 +147,9 @@ eval_cfg:
   probing:
     l1_depth: *n_steps
     l2_depth: 91
-    train_images_path: /scratch/wz1232/data/maze2d_large_diverse_probe/images.npy
+    train_images_path: ${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/images.npy
     train_path: ${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/data.p
-    val_images_path: /scratch/wz1232/data/maze2d_large_diverse_probe/images.npy
+    val_images_path: ${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/images.npy
     val_path: ${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/data.p
     probe_targets: 'locations'
     diff_targets: 'obs_component'
@@ -189,8 +189,11 @@ eval_cfg:
     plot_every: 16
     action_repeat: 4
     action_repeat_mode: 'id'
+    use_l1_policy: true
+    l1_policy_checkpoint_path: "${root_path}/checkpoint/policies/l1_latent_policy.pt"
     img_size: 98
-    replan_every: 4
+    replan_every: *l2_step_skip
+    policy_trace_checkpoint_every: 5
     image_obs: true
     stack_states: 1
     data_path: "${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/"

@@ -1,8 +1,10 @@
 from pldm.planning import objectives_v2
 import torch
+from pathlib import Path
 from pldm.models.hjepa import HJEPA
 from pldm_envs.utils.normalizer import Normalizer
 from pldm.planning.planners.enums import PlannerType
+from pldm.planning.planners.l1_policy_planner import L1PolicyPlanner
 from pldm.planning.planners.mppi_planner import MPPIPlanner
 from pldm.planning.planners.two_lvl_planner import TwoLvlPlanner
 from pldm.planning.utils import normalize_actions
@@ -13,6 +15,7 @@ from pldm.models.utils import flatten_conv_output
 from tqdm import tqdm
 from pldm.logger import Logger
 from pldm.models.utils import flatten_ensemble_conv_output
+from pldm.policy.l1 import save_l1_planning_trace
 
 
 class MPCEvaluator(ABC):
@@ -63,7 +66,21 @@ class MPCEvaluator(ABC):
         return chunk_sizes
 
     def _construct_h_planner(self, n_envs: int):
-        l1_planner = self._construct_planner(n_envs=n_envs, l1_to_l2=True)
+        if getattr(self.config, "use_l1_policy", False):
+            checkpoint_path = getattr(self.config, "l1_policy_checkpoint_path", None)
+            if not checkpoint_path:
+                raise ValueError(
+                    "Hierarchical MPC is configured to use the L1 latent policy, "
+                    "but no l1_policy_checkpoint_path was provided."
+                )
+            l1_planner = L1PolicyPlanner(
+                checkpoint_path=checkpoint_path,
+                model=self.model.level1,
+                normalizer=self.normalizer,
+                prober=self.prober,
+            )
+        else:
+            l1_planner = self._construct_planner(n_envs=n_envs, l1_to_l2=True)
 
         l2_planner = self._construct_planner(
             n_envs=n_envs,
@@ -174,11 +191,21 @@ class MPCEvaluator(ABC):
                     h_planner=h_planner,
                     planner=planner,
                     envs=envs,
+                    chunk_offset=chunk_offset,
                 )
+                if mpc_result.l1_policy_traces:
+                    env_indices = torch.arange(
+                        chunk_offset,
+                        chunk_offset + chunk_size,
+                        dtype=torch.long,
+                    )
+                    for trace in mpc_result.l1_policy_traces:
+                        trace["env_indices"] = env_indices
             else:
                 mpc_result = self._perform_mpc(
                     planner=planner,
                     envs=envs,
+                    chunk_offset=chunk_offset,
                 )
 
             mpc_data.observations.append(mpc_result.observations)
@@ -201,6 +228,7 @@ class MPCEvaluator(ABC):
             mpc_data.success_history.append(mpc_result.success_history)
             mpc_data.visual_observations.append(mpc_result.visual_observations)
             mpc_data.visual_targets.append(mpc_result.visual_targets)
+            mpc_data.l1_policy_traces.append(mpc_result.l1_policy_traces or [])
 
             # for hierarchy
             if self.hierarchical:
@@ -213,7 +241,7 @@ class MPCEvaluator(ABC):
 
         return mpc_data
 
-    def _perform_h_mpc(self, h_planner, planner, envs):
+    def _perform_h_mpc(self, h_planner, planner, envs, chunk_offset: int = 0):
         """
         Hierarchical planning.
         Two stages:
@@ -227,6 +255,7 @@ class MPCEvaluator(ABC):
             planner=h_planner,
             envs=envs,
             bilevel_planning=True,
+            chunk_offset=chunk_offset,
         )
 
         # Stage 2: Use flat L1 planning for the final steps near the goal
@@ -235,6 +264,7 @@ class MPCEvaluator(ABC):
                 planner=planner,
                 envs=envs,
                 max_steps_override=self.config.final_trans_steps,
+                chunk_offset=chunk_offset,
             )
             # combine results
             mpc_result = MPCResult(
@@ -264,6 +294,7 @@ class MPCEvaluator(ABC):
                 visual_observations=mpc_result_1.visual_observations
                 + mpc_result_2.visual_observations[1:],
                 visual_targets=mpc_result_1.visual_targets,
+                l1_policy_traces=mpc_result_1.l1_policy_traces,
             )
         else:
             mpc_result = mpc_result_1
@@ -346,6 +377,7 @@ class MPCEvaluator(ABC):
         envs,
         bilevel_planning: bool = False,
         max_steps_override: int = None,
+        chunk_offset: int = 0,
     ):
         """
         Parameters:
@@ -401,6 +433,8 @@ class MPCEvaluator(ABC):
         # for hierarchy
         pred_locations_l2_history = []
         loss_history_l2 = []
+        l1_policy_traces = []
+        completed_l1_policy_traces = 0
 
         init_infos = [e.get_info() for e in envs]
         if "location" in init_infos[0]:
@@ -422,6 +456,16 @@ class MPCEvaluator(ABC):
             max_steps = max_steps_override
         elif bilevel_planning:
             step_skip = self.model.config.step_skip
+            if (
+                self.config.policy_trace_path
+                and self.config.replan_every != step_skip
+            ):
+                raise ValueError(
+                    "L1 policy trace collection requires "
+                    f"replan_every ({self.config.replan_every}) to match "
+                    f"the L2/L1 step skip ({step_skip}) so subgoal success "
+                    "is measured over a complete L1 segment."
+                )
             max_plan_horizon_l2 = self.config.level2.max_plan_length * step_skip
             # For hierarchical planning, reserve final_trans_steps for Stage 2 (flat L1)
             # so that total steps = Stage 1 + Stage 2 = n_steps
@@ -477,6 +521,14 @@ class MPCEvaluator(ABC):
                 )
 
                 if bilevel_planning:
+                    trace = planning_result.l1_policy_trace
+                    trace["start_step"] = i
+                    trace["env_indices"] = torch.arange(
+                        chunk_offset,
+                        chunk_offset + len(envs),
+                        dtype=torch.long,
+                    )
+                    l1_policy_traces.append(trace)
                     planning_result_l2 = planning_result.level2
                     planning_result = planning_result.level1
 
@@ -547,6 +599,25 @@ class MPCEvaluator(ABC):
             if "location" in infos[0]:
                 location_history.append(np.array([info["location"] for info in infos]))
 
+            if bilevel_planning and l1_policy_traces:
+                segment_done = (
+                    (i + 1) % self.config.replan_every == 0 or i + 1 == max_steps
+                )
+                current_trace = l1_policy_traces[-1]
+                if segment_done and "subgoal_success" not in current_trace:
+                    self._annotate_l1_policy_trace_subgoal_success(
+                        current_trace,
+                        location_history,
+                        end_step=i,
+                    )
+                    completed_l1_policy_traces += 1
+                    self._checkpoint_l1_policy_traces(
+                        l1_policy_traces,
+                        completed_l1_policy_traces,
+                        chunk_offset=chunk_offset,
+                        final=(i + 1 == max_steps),
+                    )
+
             if "qpos" in infos[0]:
                 qpos_history.append(np.array([info["qpos"] for info in infos]))
 
@@ -613,7 +684,75 @@ class MPCEvaluator(ABC):
             success_history=[torch.from_numpy(x) for x in success_history],
             visual_observations=[torch.from_numpy(x) for x in visual_observations],
             visual_targets=visual_targets,
+            l1_policy_traces=l1_policy_traces,
         )
+
+    def _annotate_l1_policy_trace_subgoal_success(
+        self,
+        trace: dict,
+        location_history: list,
+        end_step: int,
+    ):
+        subgoal_locations = trace.get("subgoal_locations")
+        if subgoal_locations is None or not location_history:
+            return
+
+        start_step = int(trace.get("start_step", end_step))
+        segment_locations = location_history[start_step + 1 : end_step + 2]
+        if not segment_locations:
+            return
+
+        actual_locations = torch.from_numpy(np.stack(segment_locations)).float()
+        subgoal_locations = subgoal_locations.detach().float().cpu()
+        if subgoal_locations.dim() > 2 and subgoal_locations.shape[1] == 1:
+            subgoal_locations = subgoal_locations.squeeze(1)
+
+        distances = torch.norm(actual_locations - subgoal_locations.unsqueeze(0), dim=-1)
+        min_distances = distances.min(dim=0).values
+        final_distances = distances[-1]
+        threshold = self.config.policy_trace_subgoal_threshold
+        if threshold is None:
+            threshold = getattr(self.config, "error_threshold", 1.0)
+
+        trace["subgoal_distance"] = min_distances
+        trace["subgoal_final_distance"] = final_distances
+        trace["subgoal_success"] = min_distances <= float(threshold)
+        trace["subgoal_threshold"] = float(threshold)
+
+    def _checkpoint_l1_policy_traces(
+        self,
+        traces: list,
+        completed_count: int,
+        *,
+        chunk_offset: int,
+        final: bool = False,
+    ):
+        if not self.config.policy_trace_path:
+            return
+        checkpoint_every = max(int(self.config.policy_trace_checkpoint_every or 0), 0)
+        if checkpoint_every == 0:
+            return
+        if not final and completed_count % checkpoint_every != 0:
+            return
+
+        completed_traces = [t for t in traces if "subgoal_success" in t]
+        if not completed_traces:
+            return
+
+        output_path = Path(self.config.policy_trace_path)
+        checkpoint_path = output_path.with_name(
+            f"{output_path.stem}.chunk{chunk_offset:05d}.partial{output_path.suffix}"
+        )
+        try:
+            save_l1_planning_trace(
+                completed_traces,
+                str(checkpoint_path),
+                max_samples=self.config.policy_trace_max_samples,
+                source=f"{self.prefix}_partial",
+                success_only=self.config.policy_trace_success_only,
+            )
+        except ValueError as exc:
+            print(f"skipping partial L1 policy trace checkpoint: {exc}")
 
     def _get_relevant_pred(self, planning_result, cost_entity):
         """

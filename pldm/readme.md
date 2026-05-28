@@ -2,7 +2,7 @@
 
 First, download the pretrained world model weights by running 
 ```
-python download_ckpt_from_hf.py --out-dir <repo_root>/pldm/pretrained
+python download_ckpt_from_hf.py --out-dir $REPO_ROOT/pldm/pretrained
 ```
 
 Which will download two ckpts:
@@ -13,13 +13,106 @@ Which will download two ckpts:
 To evaluate hierarchical planning on the downloaded HWM ckpt:
 
 ```
-python train.py --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml --values eval_only=true load_l1_only=false load_checkpoint_path=<repo_root>/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt
+python train.py --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml --values eval_only=true load_l1_only=false load_checkpoint_path=/workspace/HWM_PLDM/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt
 ```
+
+### Probe-data HWM evaluation caveats
+
+For the OOD probe evaluation, use the `maze2d_large_diverse_probe` dataset paths
+in `configs/diverse_maze/icml/large_diverse_25maps_l2.yaml`. The 25-map dataset
+is the in-distribution training/eval source; the probe dataset contains the held
+out probe maps and the `starts_targets_9_12.pt` / `starts_targets_13_16.pt`
+planning splits used by the L2 `medium` and `hard` settings.
+
+Full command used for the HWM L2 probe eval:
+
+```
+python train.py \
+  --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
+  --values \
+    eval_only=true \
+    load_l1_only=false \
+    load_checkpoint_path=/workspace/HWM_PLDM/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt \
+    output_dir=policy_model_eval \
+    eval_cfg.probing.load_prober_l2=true \
+    eval_cfg.probing.visualize_probing=false
+```
+
+Caveats encountered while reproducing:
+
+- Use the HWM checkpoint
+  `load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt` with
+  `load_l1_only=false`. The older `3-9-1...` checkpoint is the level-1 PLDM
+  checkpoint and is not the right checkpoint for L2 planning evaluation.
+- `MUJOCO_PY_MUJOCO_PATH` must point at the actual MuJoCo 2.1 install. In this
+  workspace it is `/workspace/.mujoco/mujoco210`, not
+  `/root/.mujoco/mujoco210`.
+- Keep `GPUS=1` separate from `CUDA_VISIBLE_DEVICES`. `mujoco_py` reads `GPUS`
+  first when choosing the EGL render device. Setting `CUDA_VISIBLE_DEVICES=1`
+  in this workspace made PyTorch report `No CUDA GPUs are available`, while
+  `GPUS=1` kept CUDA usable and made MuJoCo print
+  `Found 2 GPUs for rendering. Using device 1.`
+- Without `GPUS=1`, planning reached environment creation but failed during
+  `env.render(mode="rgb_array")` with `RuntimeError: Failed to initialize
+  OpenGL` after `/dev/dri/renderD130` permission warnings.
+- Reducing data loader workers to one avoided an early silent exit after L2
+  latent-bound computation in this environment.
+- The L2 prober can be reused with `eval_cfg.probing.load_prober_l2=true`, but
+  the current loader infers the prober path relative to `load_checkpoint_path`.
+  If the prober was trained into an output directory, copy or symlink
+  `l2_prober-l2_locations_epoch=0.pt` next to the checkpoint, for example into
+  `pldm/pretrained/`.
+- Full L2 MPC planning is slow on the available GPU. The `medium` probe eval
+  runs 40 envs for up to 350 planning steps and advanced in bursts of roughly
+  four steps every few minutes; running both `medium` and `hard` can take many
+  hours. Probe prediction itself is much faster once the prober is available.
 
 To evaluate flat planning on the downloaded PLDM ckpt:
 
 ```
-python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --values eval_only=true load_checkpoint_path=<repo_root>/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
+python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --values eval_only=true load_checkpoint_path=$REPO_ROOT/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
+```
+
+## Offline L1 Planner-to-Policy Distillation
+
+The first policy-compilation path distills the expensive L1 sub-trajectory
+planner used inside hierarchical MPC. It collects latent supervision of the
+form:
+
+```
+(current_l1_latent, l2_subgoal_latent, final_goal_latent) -> primitive_action_sequence
+```
+
+The policy is trained entirely offline with behavior cloning and predicts the
+full L1 action sequence for one L2 segment. It does not consume pixels and does
+replace the online L1 planner at runtime when
+`eval_cfg.h_d4rl_planning.use_l1_policy=true` and
+`eval_cfg.h_d4rl_planning.l1_policy_checkpoint_path` points to a trained
+checkpoint.
+
+Collect traces from a hierarchical HWM planning eval by setting
+`eval_cfg.h_d4rl_planning.policy_trace_path`:
+
+```
+python train.py \
+  --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
+  --values \
+    eval_only=true \
+    load_l1_only=false \
+    load_checkpoint_path=$REPO_ROOT/pldm/pretrained/load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt \
+    eval_cfg.h_d4rl_planning.policy_trace_path=$REPO_ROOT/checkpoint/policy_traces/l1_latent_medium.pt \
+    eval_cfg.h_d4rl_planning.policy_trace_success_only=true
+```
+
+By default, traces are filtered to keep only episodes that eventually reached
+the goal, so failed planner rollouts are not used as policy targets.
+
+Train the offline latent L1 policy from that trace file:
+
+```
+python train_l1_policy.py \
+  --trace_path $REPO_ROOT/checkpoint/policy_traces/l1_latent_medium.pt \
+  --output_path $REPO_ROOT/checkpoint/policies/l1_latent_policy.pt
 ```
 
 To train the HWM (2 levels) on the large-maze setting by loading the downloaded level 1 PLDM model , run:

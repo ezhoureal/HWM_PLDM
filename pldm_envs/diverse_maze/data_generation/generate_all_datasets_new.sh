@@ -1,7 +1,7 @@
 # This file generates new datasets for the large diverse maze environments
 
 # Root path of the project. CHANGE TO YOUR OWN.
-PROJECT_ROOT=/scratch/wz1232/HWM_PLDM
+PROJECT_ROOT=/workspace/HWM_PLDM
 
 # Generate dataset for 25maps setting.
 python data_generation/generate_data.py --output_path ${PROJECT_ROOT}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps --config ${PROJECT_ROOT}/pldm_envs/diverse_maze/configs/maze2d_large/25maps.yaml

@@ -1,7 +1,7 @@
 # This file downloads the original datasets and render them
 
 # Root path of the project. CHANGE TO YOUR OWN.
-PROJECT_ROOT=/scratch/wz1232/HWM_PLDM
+PROJECT_ROOT=/workspace/HWM_PLDM
 
 # Download datasets from HF into pldm_envs/diverse_maze/datasets.
 python "${PROJECT_ROOT}/pldm_envs/diverse_maze/data_generation/download_ds_from_hf.py" \

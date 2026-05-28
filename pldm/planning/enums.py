@@ -44,6 +44,13 @@ class MPCConfig(ConfigBase):
     image_obs: bool = False
     stack_states: int = 1
     random_actions: bool = False
+    use_l1_policy: bool = False
+    l1_policy_checkpoint_path: Optional[str] = None
+    policy_trace_path: Optional[str] = None
+    policy_trace_success_only: bool = True
+    policy_trace_max_samples: Optional[int] = None
+    policy_trace_checkpoint_every: int = 5
+    policy_trace_subgoal_threshold: Optional[float] = None
     # for choosing start, goal pairs from offline data
     offline_T: int = 10  # timesteps between start and goal
     start_target_from_data: bool = False
@@ -79,6 +86,7 @@ class MPCResult(NamedTuple):
     success_history: Optional[List[torch.Tensor]] = None
     visual_observations: Optional[List[torch.Tensor]] = None
     visual_targets: Optional[torch.Tensor] = None
+    l1_policy_traces: Optional[list] = None
 
 
 @dataclass
@@ -104,6 +112,7 @@ class PooledMPCResult:
     success_history: list = field(default_factory=list)
     visual_observations: list = field(default_factory=list)
     visual_targets: list = field(default_factory=list)
+    l1_policy_traces: list = field(default_factory=list)
 
     def concatenate_chunks(self):
         # combine different chunks together in batch dimension
@@ -158,3 +167,6 @@ class PooledMPCResult:
         self.visual_targets = (
             torch.cat(self.visual_targets) if self.visual_observations else None
         )
+        self.l1_policy_traces = [
+            item for chunk in self.l1_policy_traces for item in chunk
+        ]

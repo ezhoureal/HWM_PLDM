@@ -72,9 +72,18 @@ wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
 tar -xzf mujoco210-linux-x86_64.tar.gz
 
 ## Runtime env
+```
 export MUJOCO_GL=egl
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin"
-export D4RL_SUPPRESS_IMPORT_ERROR=1
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/workspace/.mujoco/mujoco210/bin"
+export D4RL_SUPPRESS_IMPORT_ERROR=1 \
+  PYTHONFAULTHANDLER=1 \
+  CUDA_LAUNCH_BLOCKING=1 \
+  GPUS=1 \
+  MUJOCO_GL=egl \
+  PYOPENGL_PLATFORM=egl \
+  MUJOCO_PY_MUJOCO_PATH=/workspace/.mujoco/mujoco210 \
+  LD_LIBRARY_PATH=/workspace/.mujoco/mujoco210/bin:/usr/lib/nvidia:/usr/local/cuda/lib64
+```
 
 ## Setup caveats when using `uv`
 
@@ -91,14 +100,18 @@ details may be needed beyond `uv pip install -r requirements.txt` and
   commands with the MuJoCo 2.1 runtime variables exported in the same shell:
   ```
   export MUJOCO_GL=egl
-  export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin"
+  export PYOPENGL_PLATFORM=egl
+  export LD_LIBRARY_PATH="$HOME/.mujoco/mujoco210/bin:/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
   export D4RL_SUPPRESS_IMPORT_ERROR=1
   ```
-- On headless systems, `mujoco_py` may try to build against OSMesa and fail on
-  `GL/osmesa.h` or `libOSMesa.so`. Install the Mesa OSMesa development package
-  if you have sudo, for example `libosmesa6-dev` on Ubuntu. If you do not have
-  sudo, unpacking the relevant `.deb` packages into a local sysroot and exporting
-  `CPATH`, `LIBRARY_PATH`, and `LD_LIBRARY_PATH` to that sysroot also works.
+- On current Ubuntu/NVIDIA images, `mujoco_py` may still choose its CPU/OSMesa
+  builder unless it can find the NVIDIA EGL library directory. If GPU rendering
+  fails with `GL/osmesa.h` even though `MUJOCO_GL=egl` is set, ensure
+  `/lib/x86_64-linux-gnu` is on `LD_LIBRARY_PATH`; the provided render helper
+  does this automatically when `libEGL_nvidia.so.0` exists there.
+- The EGL builder requires GLEW development headers. If the first `mujoco_py`
+  import fails with `GL/glew.h: No such file or directory`, install
+  `libglew-dev` on Ubuntu.
 - `mujoco_py` also calls `patchelf` after compiling its extension. If `patchelf`
   is not available on `PATH`, install the Python-packaged executable:
   ```
@@ -124,6 +137,8 @@ details may be needed beyond `uv pip install -r requirements.txt` and
 
 1. Go to `pldm_envs/`, follow instructions to set up dataset for the environment of your choice
 2. Go to `pldm/`, follow instruction to run training or evaluation
+
+For Diverse Maze probe-data HWM evaluation, including the required MuJoCo/EGL environment prefix and reproduction caveats, see `pldm/readme.md`.
 
 
 # Datasets
