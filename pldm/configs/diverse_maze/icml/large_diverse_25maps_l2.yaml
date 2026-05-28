@@ -174,7 +174,8 @@ eval_cfg:
     lr: 0.0032
     schedule: Cosine
     visualize_probing: false
-    load_prober: false
+    load_prober: true
+    load_prober_l2: true
   h_d4rl_planning:
     env_name: *env_name
     n_envs: 85

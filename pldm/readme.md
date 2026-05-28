@@ -2,7 +2,7 @@
 
 First, download the pretrained world model weights by running 
 ```
-python download_ckpt_from_hf.py --out-dir $REPO_ROOT/pldm/pretrained
+python download_ckpt_from_hf.py --out-dir /workspace/HWM_PLDM/pldm/pretrained
 ```
 
 Which will download two ckpts:
@@ -67,7 +67,7 @@ Caveats encountered while reproducing:
 To evaluate flat planning on the downloaded PLDM ckpt:
 
 ```
-python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --values load_checkpoint_path=$REPO_ROOT/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
+python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --values load_checkpoint_path=/workspace/HWM_PLDM/pldm/pretrained/3-9-1-seed248_epoch=3_sample_step=15465472.ckpt
 ```
 
 ## Offline Latent Planner-to-Policy Distillation
@@ -98,7 +98,7 @@ Collect traces from a hierarchical HWM planning eval by setting
 python train.py \
   --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
   --values \
-    eval_cfg.h_d4rl_planning.l1_policy_trace_path=$REPO_ROOT/checkpoint/policy_traces/l1_latent_medium.pt \
+    eval_cfg.h_d4rl_planning.l1_policy_trace_path=/workspace/HWM_PLDM/checkpoint/policy_traces/l1_latent_medium.pt \
     eval_cfg.h_d4rl_planning.policy_trace_success_only=true wandb=false
 ```
 
@@ -109,8 +109,8 @@ Train the offline latent L1 policy from that trace file:
 
 ```
 python train_l1_policy.py \
-  --trace_path $REPO_ROOT/checkpoint/policy_traces/l1_latent_medium.pt \
-  --output_path $REPO_ROOT/checkpoint/policies/l1_latent_policy.pt
+  --trace_path /workspace/HWM_PLDM/checkpoint/policy_traces/l1_latent_medium.pt \
+  --output_path /workspace/HWM_PLDM/checkpoint/policies/l1_latent_policy.pt
 ```
 
 ### L2 policy
@@ -133,7 +133,7 @@ Collect traces alongside the same hierarchical eval by setting
 python train.py \
   --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
   --values \
-    eval_cfg.h_d4rl_planning.l2_policy_trace_path=$REPO_ROOT/checkpoint/policy_traces/l2_latent_medium.pt \
+    eval_cfg.h_d4rl_planning.l2_policy_trace_path=/workspace/HWM_PLDM/checkpoint/policy_traces/l2_latent_medium.pt \
     eval_cfg.h_d4rl_planning.l2_policy_trace_success_only=true wandb=false
 ```
 
@@ -141,8 +141,8 @@ Train the offline latent L2 policy from that trace file:
 
 ```
 python train_l2_policy.py \
-  --trace_path $REPO_ROOT/checkpoint/policy_traces/l2_latent_medium.pt \
-  --output_path $REPO_ROOT/checkpoint/policies/l2_latent_policy.pt
+  --trace_path /workspace/HWM_PLDM/checkpoint/policy_traces/l2_latent_medium.pt \
+  --output_path /workspace/HWM_PLDM/checkpoint/policies/l2_latent_policy.pt
 ```
 
 To train the HWM (2 levels) on the large-maze setting by loading the downloaded level 1 PLDM model , run:
