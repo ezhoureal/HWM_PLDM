@@ -75,7 +75,7 @@ python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --v
 The policy-compilation path now uses shared latent-policy and trace-collector
 modules for both hierarchy levels.
 
-### L1 policy
+### Policy modules L1
 
 The L1 policy distills the expensive sub-trajectory planner used inside
 hierarchical MPC. It collects latent supervision of the form:
@@ -84,23 +84,8 @@ hierarchical MPC. It collects latent supervision of the form:
 (current_l1_latent, l2_subgoal_latent, final_goal_latent) -> primitive_action_sequence
 ```
 
-The policy is trained entirely offline with behavior cloning and predicts the
-full L1 action sequence for one L2 segment. It does not consume pixels and does
-replace the online L1 planner at runtime when
-`eval_cfg.h_d4rl_planning.use_l1_policy=true` and
-`eval_cfg.h_d4rl_planning.l1_policy_checkpoint_path` points to a trained
-checkpoint.
-
 Collect traces from a hierarchical HWM planning eval by setting
-`eval_cfg.h_d4rl_planning.l1_policy_trace_path`:
-
-```
-python train.py \
-  --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
-  --values \
-    eval_cfg.h_d4rl_planning.l1_policy_trace_path=/workspace/HWM_PLDM/checkpoint/policy_traces/l1_latent_medium.pt \
-    eval_cfg.h_d4rl_planning.policy_trace_success_only=true wandb=false
-```
+`eval_cfg.h_d4rl_planning.l1_policy_trace_path`.
 
 By default, traces are filtered to keep only episodes that eventually reached
 the goal, so failed planner rollouts are not used as policy targets.
@@ -112,6 +97,10 @@ python train_l1_policy.py \
   --trace_path /workspace/HWM_PLDM/checkpoint/policy_traces/l1_latent_medium.pt \
   --output_path /workspace/HWM_PLDM/checkpoint/policies/l1_latent_policy.pt
 ```
+
+Then to enable L1 policy, set
+`eval_cfg.h_d4rl_planning.use_l1_policy=true` and
+`eval_cfg.h_d4rl_planning.l1_policy_checkpoint_path=` points to a trained checkpoint.
 
 ### L2 policy
 
@@ -127,23 +116,17 @@ after each L1 segment, so that is the part of the L2 plan that is actually
 consumed online.
 
 Collect traces alongside the same hierarchical eval by setting
-`eval_cfg.h_d4rl_planning.l2_policy_trace_path`:
+`eval_cfg.h_d4rl_planning.l2_policy_trace_path` to a path to save the traces.
 
-```
-python train.py \
-  --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
-  --values \
-    eval_cfg.h_d4rl_planning.l2_policy_trace_path=/workspace/HWM_PLDM/checkpoint/policy_traces/l2_latent_medium.pt \
-    eval_cfg.h_d4rl_planning.l2_policy_trace_success_only=true wandb=false
-```
-
-Train the offline latent L2 policy from that trace file:
+Then train the offline latent L2 policy from that trace file:
 
 ```
 python train_l2_policy.py \
   --trace_path /workspace/HWM_PLDM/checkpoint/policy_traces/l2_latent_medium.pt \
   --output_path /workspace/HWM_PLDM/checkpoint/policies/l2_latent_policy.pt
 ```
+
+## Training
 
 To train the HWM (2 levels) on the large-maze setting by loading the downloaded level 1 PLDM model , run:
 
