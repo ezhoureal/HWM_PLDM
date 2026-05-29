@@ -52,12 +52,6 @@ Figure 1b: Hierarchical planning improves success on non-greedy, long-horizon ta
 Tested on python 3.9, CUDA 13.0
 
 ```
-uv venv --python 3.9 --system-site-packages
-
-uv pip install -r requirements.txt
-
-uv pip install -e .
-
 apt update && apt install -y \
     libgl1 \
     libglx-mesa0 \
@@ -66,6 +60,22 @@ apt update && apt install -y \
     libgl1-mesa-dri \
     mesa-utils \
     patchelf
+
+export D4RL_SUPPRESS_IMPORT_ERROR=1 \
+  PYTHONFAULTHANDLER=1 \
+  CUDA_LAUNCH_BLOCKING=1 \
+  GPUS=1 \
+  MUJOCO_GL=egl \
+  PYOPENGL_PLATFORM=egl \
+  MUJOCO_PY_MUJOCO_PATH=$HOME/.mujoco/mujoco210 \
+  LD_LIBRARY_PATH=$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia:/usr/local/cuda/lib64
+
+source activate_local_env.sh
+
+uv pip install -r requirements.txt
+
+uv pip install -e .
+
 ```
 
 ## MuJoCo 2.1 for d4rl + mujoco-py
@@ -74,69 +84,11 @@ cd "$HOME/.mujoco"
 wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
 tar -xzf mujoco210-linux-x86_64.tar.gz --no-same-owner
 
-## Runtime env
-```
-export D4RL_SUPPRESS_IMPORT_ERROR=1 \
-  PYTHONFAULTHANDLER=1 \
-  CUDA_LAUNCH_BLOCKING=1 \
-  GPUS=1 \
-  MUJOCO_GL=egl \
-  PYOPENGL_PLATFORM=egl \
-  MUJOCO_PY_MUJOCO_PATH=/$HOME/.mujoco/mujoco210 \
-  LD_LIBRARY_PATH=/$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia:/usr/local/cuda/lib64
-```
 Then test with:
+
 ```bash
-uv run -c "from OpenGL import EGL; import mujoco_py; print(EGL)"
+python -c "from OpenGL import EGL; import mujoco_py; print(EGL)"
 ```
-
-## Setup caveats when using `uv`
-
-The repository works with a `uv` virtual environment, but a few extra runtime
-details may be needed beyond `uv pip install -r requirements.txt` and
-`uv pip install -e .`:
-
-- The helper download scripts require `huggingface_hub`. Install it if it is
-  missing:
-  ```
-  uv pip install huggingface_hub
-  ```
-- `mujoco_py` checks `LD_LIBRARY_PATH` at import time. Run rendering/evaluation
-  commands with the MuJoCo 2.1 runtime variables exported in the same shell:
-  ```
-  export MUJOCO_GL=egl
-  export PYOPENGL_PLATFORM=egl
-  export LD_LIBRARY_PATH="$HOME/.mujoco/mujoco210/bin:/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
-  export D4RL_SUPPRESS_IMPORT_ERROR=1
-  ```
-- On current Ubuntu/NVIDIA images, `mujoco_py` may still choose its CPU/OSMesa
-  builder unless it can find the NVIDIA EGL library directory. If GPU rendering
-  fails with `GL/osmesa.h` even though `MUJOCO_GL=egl` is set, ensure
-  `/lib/x86_64-linux-gnu` is on `LD_LIBRARY_PATH`; the provided render helper
-  does this automatically when `libEGL_nvidia.so.0` exists there.
-- The EGL builder requires GLEW development headers. If the first `mujoco_py`
-  import fails with `GL/glew.h: No such file or directory`, install
-  `libglew-dev` on Ubuntu.
-- `mujoco_py` also calls `patchelf` after compiling its extension. If `patchelf`
-  is not available on `PATH`, install the Python-packaged executable:
-  ```
-  uv pip install patchelf
-  ```
-- The provided maze configs contain original `/scratch/...` paths. For local
-  evaluation, override `root_path`, checkpoint paths, and image paths with
-  `--values`, or edit the configs before running `pldm/train.py`.
-- The Hugging Face maze dataset snapshot contains proprioceptive data and
-  evaluation starts/targets, but not pre-rendered `images.npy`. Rendering the
-  image observations can take a while. The renderer skips PNGs that already
-  exist, so interrupted renders can be resumed safely. A reusable resumable
-  helper is available:
-  ```
-  scripts/render_diverse_maze_images.sh --postprocess
-  ```
-  By default this renders the local probe dataset with a small parallel pool and
-  then runs `postprocess_images.py` to create `images.npy`. Use `--data-path`,
-  `--parallel`, `--start`, and `--end` to target other maze dataset directories
-  or tune cloud jobs.
 
 # Run Experiments
 
