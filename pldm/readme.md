@@ -30,39 +30,10 @@ Full command used for the HWM L2 probe eval:
 python train.py \
   --config configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
   --values \
-    output_dir=policy_model_eval \
+    output_dir=<xxx> \
     eval_cfg.probing.load_prober_l2=true \
     eval_cfg.probing.visualize_probing=false
 ```
-
-Caveats encountered while reproducing:
-
-- Use the HWM checkpoint
-  `load_from_l1248-seed248_epoch=5_sample_step=10789632.ckpt` with
-  `load_l1_only=false`. The older `3-9-1...` checkpoint is the level-1 PLDM
-  checkpoint and is not the right checkpoint for L2 planning evaluation.
-- `MUJOCO_PY_MUJOCO_PATH` must point at the actual MuJoCo 2.1 install. In this
-  workspace it is `/workspace/.mujoco/mujoco210`, not
-  `/root/.mujoco/mujoco210`.
-- Keep `GPUS=1` separate from `CUDA_VISIBLE_DEVICES`. `mujoco_py` reads `GPUS`
-  first when choosing the EGL render device. Setting `CUDA_VISIBLE_DEVICES=1`
-  in this workspace made PyTorch report `No CUDA GPUs are available`, while
-  `GPUS=1` kept CUDA usable and made MuJoCo print
-  `Found 2 GPUs for rendering. Using device 1.`
-- Without `GPUS=1`, planning reached environment creation but failed during
-  `env.render(mode="rgb_array")` with `RuntimeError: Failed to initialize
-  OpenGL` after `/dev/dri/renderD130` permission warnings.
-- Reducing data loader workers to one avoided an early silent exit after L2
-  latent-bound computation in this environment.
-- The L2 prober can be reused with `eval_cfg.probing.load_prober_l2=true`, but
-  the current loader infers the prober path relative to `load_checkpoint_path`.
-  If the prober was trained into an output directory, copy or symlink
-  `l2_prober-l2_locations_epoch=0.pt` next to the checkpoint, for example into
-  `pldm/pretrained/`.
-- Full L2 MPC planning is slow on the available GPU. The `medium` probe eval
-  runs 40 envs for up to 350 planning steps and advanced in bursts of roughly
-  four steps every few minutes; running both `medium` and `hard` can take many
-  hours. Probe prediction itself is much faster once the prober is available.
 
 To evaluate flat planning on the downloaded PLDM ckpt:
 
@@ -120,10 +91,19 @@ Collect traces alongside the same hierarchical eval by setting
 
 Then train the offline latent L2 policy from that trace file:
 
-```
+```bash
 python train_l2_policy.py \
   --trace_path /workspace/HWM_PLDM/checkpoint/policy_traces/l2_latent_medium.pt \
-  --output_path /workspace/HWM_PLDM/checkpoint/policies/l2_latent_policy.pt
+  --output_path /workspace/HWM_PLDM/checkpoint/policies/l2_latent_policy.pt \
+  --epochs 60 \
+  --batch_size 128 \
+  --lr 1e-4 \
+  --weight_decay 1e-4 \
+  --val_fraction 0.15 \
+  --hidden_dim 256 \
+  --num_layers 3 \
+  --dropout 0.05 \
+  --seed 42
 ```
 
 ## Training

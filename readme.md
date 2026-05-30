@@ -52,37 +52,8 @@ Figure 1b: Hierarchical planning improves success on non-greedy, long-horizon ta
 Tested on python 3.9, CUDA 13.0
 
 ```
-apt update && apt install -y \
-    libgl1 \
-    libglx-mesa0 \
-    libegl1 \
-    libgles2 \
-    libgl1-mesa-dri \
-    mesa-utils \
-    patchelf
-
-export D4RL_SUPPRESS_IMPORT_ERROR=1 \
-  PYTHONFAULTHANDLER=1 \
-  CUDA_LAUNCH_BLOCKING=1 \
-  GPUS=1 \
-  MUJOCO_GL=egl \
-  PYOPENGL_PLATFORM=egl \
-  MUJOCO_PY_MUJOCO_PATH=$HOME/.mujoco/mujoco210 \
-  LD_LIBRARY_PATH=$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia:/usr/local/cuda/lib64
-
-source activate_local_env.sh
-
-uv pip install -r requirements.txt
-
-uv pip install -e .
-
+source setup.sh
 ```
-
-## MuJoCo 2.1 for d4rl + mujoco-py
-mkdir -p "$HOME/.mujoco"
-cd "$HOME/.mujoco"
-wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-tar -xzf mujoco210-linux-x86_64.tar.gz --no-same-owner
 
 Then test with:
 
