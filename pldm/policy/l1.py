@@ -148,17 +148,21 @@ def save_policy_checkpoint(
 
 def load_policy_checkpoint(path: str, map_location: Optional[str] = None):
     payload = torch.load(path, map_location=map_location, weights_only=True)
-    latent_config = LatentPolicyConfig(**payload["policy_config"])
-    policy_config = L1PolicyConfig(
-        current_dim=latent_config.input_dims["current_latents"],
-        subgoal_dim=latent_config.input_dims["subgoal_latents"],
-        final_goal_dim=latent_config.input_dims["final_goal_latents"],
-        action_dim=latent_config.action_dim,
-        horizon=latent_config.horizon,
-        hidden_dim=latent_config.hidden_dim,
-        num_layers=latent_config.num_layers,
-        dropout=latent_config.dropout,
-    )
+    saved_config = payload["policy_config"]
+    if "input_dims" in saved_config:
+        latent_config = LatentPolicyConfig(**saved_config)
+        policy_config = L1PolicyConfig(
+            current_dim=latent_config.input_dims["current_latents"],
+            subgoal_dim=latent_config.input_dims["subgoal_latents"],
+            final_goal_dim=latent_config.input_dims["final_goal_latents"],
+            action_dim=latent_config.action_dim,
+            horizon=latent_config.horizon,
+            hidden_dim=latent_config.hidden_dim,
+            num_layers=latent_config.num_layers,
+            dropout=latent_config.dropout,
+        )
+    else:
+        policy_config = L1PolicyConfig(**saved_config)
     policy = L1LatentSubgoalPolicy(policy_config)
     policy.load_state_dict(payload["policy_state_dict"])
     policy.eval()

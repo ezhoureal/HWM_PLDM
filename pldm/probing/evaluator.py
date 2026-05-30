@@ -205,11 +205,12 @@ class ProbingEvaluator:
         level = "l2" if l2 else "l1"
 
         plot_prefix = f"{level}_{epoch}"
-
+        print(f"Training prober for {level}, epoch {epoch}")
         if l2:
             model = self.model
             dataset = self.l2_ds
             load_prober = self.config.load_prober_l2
+            print(f'load l2 prober = {load_prober}')
             probe_targets = self.config.l2_probe_targets.split(",")
             probe_targets = [f"l2_{x}" for x in probe_targets]
         else:

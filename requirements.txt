@@ -176,3 +176,4 @@ websocket-client==1.5.1
 y-py==0.5.9
 zarr==2.14.2
 zipp==3.13.0
+huggingface-hub==1.8.0

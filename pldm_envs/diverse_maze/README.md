@@ -19,4 +19,3 @@ The following scripts will generate datasets for the large diverse maps setting.
 ```
 bash data_generation/generate_all_datasets_new.sh
 ```
-
