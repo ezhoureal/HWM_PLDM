@@ -25,6 +25,8 @@ from pldm.policy.l2 import (
     save_l2_planning_trace,
 )
 
+from pldm.policy.concat_traces import concat_policy_traces
+
 load_policy_checkpoint = load_l1_policy_checkpoint
 make_policy_config_from_trace = make_l1_policy_config_from_trace
 
@@ -51,4 +53,5 @@ __all__ = [
     "load_l2_policy_checkpoint",
     "make_l2_policy_config_from_trace",
     "save_l2_planning_trace",
+    "concat_policy_traces",
 ]

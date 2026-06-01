@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 from tqdm.auto import tqdm
 
+from pldm.policy.concat_traces import concat_policy_traces
 from pldm.policy.l1 import (
     L1LatentSubgoalPolicy,
     L1PlanningTraceDataset,
@@ -62,8 +63,33 @@ def build_parser():
         description="Train an offline latent policy from planner traces"
     )
     parser.add_argument("--policy_level", choices=sorted(POLICY_REGISTRY), required=True)
-    parser.add_argument("--trace_path", required=True)
+    parser.add_argument(
+        "--trace_path",
+        help="Path to a single trace .pt file (or a combined file). "
+             "Ignored if --trace_dir is provided.",
+    )
+    parser.add_argument(
+        "--trace_dir",
+        help="Directory containing multiple trace files (e.g. checkpoint/policy_traces). "
+             "Will auto-discover and concatenate all matching L1 or L2 traces for --policy_level.",
+    )
+    parser.add_argument(
+        "--trace_pattern",
+        default=None,
+        help="Glob pattern inside --trace_dir (default: l1_latent_*.pt or l2_latent_*.pt).",
+    )
+    parser.add_argument(
+        "--combined_trace_cache",
+        default=None,
+        help="Optional path to write the concatenated trace (avoids re-concat on every run). "
+             "If not given, a combined cache file is written inside --trace_dir.",
+    )
     parser.add_argument("--output_path", required=True)
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Resume training from this .pt checkpoint (loads policy weights, optimizer state if present, epoch, best_loss, and history). Continues toward --epochs.",
+    )
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=3e-4)
@@ -84,7 +110,51 @@ def main(argv=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     registry_entry = POLICY_REGISTRY[args.policy_level]
 
-    dataset = registry_entry["dataset_cls"](args.trace_path)
+    # Resolve the effective trace path (single file or auto-concat from directory)
+    if args.trace_dir:
+        level = args.policy_level
+        d = Path(args.trace_dir).expanduser().resolve()
+        pattern = args.trace_pattern or (f"{level}_latent_*.pt")
+
+        if args.combined_trace_cache:
+            cache_path = Path(args.combined_trace_cache).expanduser().resolve()
+        else:
+            cache_path = d / f"{level}_latent_combined_from_dir.pt"
+
+        # Collect candidates while excluding generated cache files. If a caller
+        # explicitly asks for a combined pattern, keep those matches except the
+        # cache path we are about to overwrite.
+        pattern_mentions_combined = "combined" in pattern.lower()
+        candidates = [
+            c
+            for c in sorted(d.glob(pattern))
+            if ".partial" not in c.name
+            and c.resolve() != cache_path
+            and (pattern_mentions_combined or "combined" not in c.name.lower())
+        ]
+
+        if not candidates:
+            raise FileNotFoundError(
+                f"No {level} trace files found in {d} matching {pattern}"
+            )
+
+        print(f"[trace] Found {len(candidates)} {level.upper()} trace file(s) in {d}")
+        print(f"[trace] Concatenating into cache: {cache_path}")
+
+        concat_policy_traces(
+            candidates,
+            cache_path,
+            level=level,
+            source_tag="train-from-dir",
+            verbose=True,
+        )
+        effective_trace_path = str(cache_path)
+    else:
+        if not args.trace_path:
+            raise ValueError("--trace_path is required unless --trace_dir is used")
+        effective_trace_path = args.trace_path
+
+    dataset = registry_entry["dataset_cls"](effective_trace_path)
     val_len = int(len(dataset) * args.val_fraction)
     train_len = len(dataset) - val_len
     if train_len <= 0:
@@ -128,10 +198,26 @@ def main(argv=None):
         policy.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
 
+    # Resume logic (supports checkpoints written by this trainer)
+    start_epoch = 0
     best_val = float("inf")
     history = []
+    ckpt_arg = getattr(args, "checkpoint", None)
+    if ckpt_arg:
+        ckpt_path = Path(ckpt_arg).expanduser().resolve()
+        if ckpt_path.exists():
+            ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+            policy.load_state_dict(ckpt["policy_state_dict"])
+            if "optimizer_state_dict" in ckpt:
+                optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            start_epoch = int(ckpt.get("epoch", -1)) + 1
+            best_val = float(ckpt.get("best_loss", float("inf")))
+            history = list(ckpt.get("history", []))
+            print(f"[resume] Loaded {ckpt_path.name} (epoch {start_epoch}, best_val={best_val:.6f}, {len(history)} history entries)")
+        else:
+            print(f"[warn] --checkpoint {ckpt_path} not found; starting from scratch")
 
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         policy.train()
         train_losses = []
         for batch in tqdm(train_loader, desc=f"epoch {epoch} train"):
@@ -182,8 +268,9 @@ def main(argv=None):
                     "epoch": epoch,
                     "best_loss": best_val,
                     "policy_level": args.policy_level,
-                    "trace_path": str(Path(args.trace_path).resolve()),
+                    "trace_path": str(Path(effective_trace_path).resolve()),
                     "history": history,
+                    "optimizer_state_dict": optimizer.state_dict(),
                 },
             )
 
