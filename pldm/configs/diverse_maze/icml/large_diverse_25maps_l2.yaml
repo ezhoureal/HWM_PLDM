@@ -133,7 +133,7 @@ objectives_l2:
   prediction_obs:
     global_coeff: 2.416154262252218
 optimizer_type: Adam
-output_dir: maze2d_large_diverse_policy
+output_dir: 0529_l1_policy_only
 output_root: ${root_path}/checkpoint/maze2d_large_diverse/l2_wo_encoder
 eval_cfg:
   env_name: *env_name
@@ -183,11 +183,11 @@ eval_cfg:
     final_trans_norm_cutoff: 4
     final_trans_steps: 15
     mock_l1: false
-    n_envs_batch_size: 20
+    n_envs_batch_size: 40
     seed: 42
     error_threshold: 1.0
-    visualize_planning: true
-    plot_every: 16
+    visualize_planning: false
+    plot_every: 999999
     action_repeat: 4
     action_repeat_mode: 'id'
     l1_policy_trace_path: null
@@ -200,7 +200,7 @@ eval_cfg:
     l2_policy_checkpoint_path: "${root_path}/checkpoint/policies/l2_latent_policy.pt"
     img_size: 98
     replan_every: *l2_step_skip
-    policy_trace_checkpoint_every: 5
+    policy_trace_checkpoint_every: 20
     image_obs: true
     stack_states: 1
     data_path: "${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_probe/"
@@ -295,4 +295,4 @@ run_name: l2_large_diverse_25maps_wo_encoder
 run_project: l2-HJEPA-maze-v3
 save_every_n_epochs: 1
 seed: 246
-wandb: true
+wandb: false
