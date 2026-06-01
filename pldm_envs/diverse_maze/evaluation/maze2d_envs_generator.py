@@ -24,6 +24,7 @@ class Maze2DEnvsGenerator(EnvsGenerator):
         trials_path: str = None,
         unique_shortest_path: bool = False,
         normalizer: Normalizer = None,
+        build_envs: bool = True,
     ):
         super().__init__(
             env_name=env_name,
@@ -37,6 +38,7 @@ class Maze2DEnvsGenerator(EnvsGenerator):
             trials_path=trials_path,
             unique_shortest_path=unique_shortest_path,
             normalizer=normalizer,
+            build_envs=build_envs,
         )
         self.action_repeat = action_repeat
         self.action_repeat_mode = action_repeat_mode

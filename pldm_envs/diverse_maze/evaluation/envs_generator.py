@@ -1,3 +1,5 @@
+import random
+
 import torch
 from pldm_envs.diverse_maze.utils import load_uniform
 from pldm_envs.utils.normalizer import Normalizer
@@ -25,6 +27,7 @@ class EnvsGenerator:
         trials_path: str = None,
         unique_shortest_path: bool = False,
         normalizer: Normalizer = None,
+        build_envs: bool = True,
     ):
         self.env_name = env_name
         self.n_envs = n_envs
@@ -32,13 +35,16 @@ class EnvsGenerator:
         self.max_block_radius = max_block_radius
         self.seed = seed
         self.rng = np.random.default_rng(seed)
+        random.seed(seed)
+        np.random.seed(seed)
         self.stack_states = stack_states
         self.image_obs = image_obs
         self.data_path = data_path
         self.trials_path = trials_path
         self.unique_shortest_path = unique_shortest_path
         self.normalizer = normalizer
-        self.metadata = torch.load(f"{data_path}/metadata.pt")
+        self.build_envs = build_envs
+        self.metadata = torch.load(f"{data_path}/metadata.pt", weights_only=False)
 
     def __call__(self):
         envs = []
@@ -55,11 +61,11 @@ class EnvsGenerator:
 
         if "diverse" in env_name:
             map_path = f"{data_path}/train_maps.pt"
-            map_layouts = torch.load(map_path)
+            map_layouts = torch.load(map_path, weights_only=False)
             map_keys = list(map_layouts.keys())
 
             if trials_path is not None and trials_path:
-                trials = torch.load(trials_path)
+                trials = torch.load(trials_path, weights_only=False)
                 assert n_envs <= len(trials["map_layouts"])
 
                 for i in range(n_envs):
@@ -107,22 +113,31 @@ class EnvsGenerator:
                 for i, map_idx in enumerate(env_keys):
                     start = sample_location(uniform_ds[map_idx], rng=self.rng)[:2]
 
-                    env, target, block_dist, turns = self._make_env(
-                        start=start,
+                    target, block_dist, turns = self._sample_nearby_location(
+                        anchor=start,
+                        map_key=map_layouts[map_idx],
                         min_block_radius=min_block_radius,
                         max_block_radius=max_block_radius,
-                        map_idx=map_idx,
-                        map_key=map_layouts[map_idx],
-                        # block_dist=block_dist,
-                        # turns=turns,
                     )
-                    envs.append(env)
 
                     trials["starts"].append(start)
                     trials["targets"].append(target)
                     trials["map_layouts"].append(map_layouts[map_idx])
                     trials["block_dists"].append(block_dist)
                     trials["turns"].append(turns)
+
+                    if self.build_envs:
+                        env, _, _, _ = self._make_env(
+                            start=start,
+                            min_block_radius=min_block_radius,
+                            max_block_radius=max_block_radius,
+                            map_idx=map_idx,
+                            map_key=map_layouts[map_idx],
+                            target=target,
+                            block_dist=block_dist,
+                            turns=turns,
+                        )
+                        envs.append(env)
 
                 # torch.save(trials, f"{data_path}/trials.pt")
         else:
