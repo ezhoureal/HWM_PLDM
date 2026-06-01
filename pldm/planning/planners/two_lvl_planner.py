@@ -57,7 +57,9 @@ class TwoLvlPlanner:
             "repr_input": True,
         }
         if getattr(self.l2_planner, "is_policy_planner", False):
+            self._require_final_goal_latents("plan")
             l2_plan_kwargs["final_goal_latents"] = self.final_goal_latents.detach()
+
         l2_result = self.l2_planner.plan(
             # diff_loss_idx=diff_loss_idx.to(enc2.device),
             **l2_plan_kwargs,
@@ -87,7 +89,7 @@ class TwoLvlPlanner:
                     curr_proprio_vel=curr_proprio_vel,
                     curr_locations=curr_locations,
                     subgoal_latents=l2_result.pred_obs[1].detach(),
-                    final_goal_latents=self.final_goal_latents.detach(),
+                    final_goal_latents=self._get_final_goal_latents(),
                 )
             else:
                 self.l1_planner.reset_targets(
@@ -102,10 +104,11 @@ class TwoLvlPlanner:
                     curr_proprio_vel=curr_proprio_vel,
                 )
 
+        goal_latents = self._get_final_goal_latents()
         l1_policy_trace = {
             "current_latents": backbone_output.obs_component.detach(),
             "subgoal_latents": l2_result.pred_obs[1].detach(),
-            "final_goal_latents": self.final_goal_latents.detach(),
+            "final_goal_latents": goal_latents,
             "actions": l1_result.actions.detach(),
         }
         if l2_result.locations is not None:
@@ -113,7 +116,7 @@ class TwoLvlPlanner:
 
         l2_policy_trace = {
             "current_latents": backbone_output.obs_component.detach(),
-            "final_goal_latents": self.final_goal_latents.detach(),
+            "final_goal_latents": goal_latents,
             "actions": l2_result.actions[:, :1].detach(),
         }
 
@@ -122,4 +125,16 @@ class TwoLvlPlanner:
             level2=l2_result,
             l1_policy_trace=l1_policy_trace,
             l2_policy_trace=l2_policy_trace,
+        )
+
+    def _get_final_goal_latents(self):
+        self._require_final_goal_latents("any plan() or trace building")
+        return self.final_goal_latents.detach()
+
+    def _require_final_goal_latents(self, action: str):
+        if hasattr(self, "final_goal_latents") and self.final_goal_latents is not None:
+            return
+        raise RuntimeError(
+            "TwoLvlPlanner: final_goal_latents not set. "
+            f"reset_targets() must be called before {action}."
         )

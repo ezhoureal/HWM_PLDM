@@ -408,6 +408,8 @@ class Evaluator:
                     f"{self.output_path}/planning_l2_mpc_report_{planning_evaluator.prefix}",
                 )
 
+                planning_evaluator.close()
+
         self.model.train()
 
         return log_dict

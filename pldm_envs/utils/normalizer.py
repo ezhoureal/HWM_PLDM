@@ -256,11 +256,6 @@ class Normalizer:
             state = self.min_max_normalize_state(state)
         if self.image_based:  # if its image
             if state.ndim < 3:
-                print(
-                    "skipping image state normalization for non-image state shape "
-                    f"{tuple(state.shape)} with image stats shape "
-                    f"{tuple(self.state_mean.shape)}"
-                )
                 return state
 
             adapted_mean = self.state_mean.view(-1, 1, 1).to(state.device)
@@ -283,11 +278,6 @@ class Normalizer:
                 )
                 if likely_image_state:
                     raise
-                print(
-                    "skipping image state normalization for non-image state shape "
-                    f"{tuple(state.shape)} with image stats shape "
-                    f"{tuple(self.state_mean.shape)}: {exc}"
-                )
                 # Fast no-image trace collection can reuse image-based stats while states
                 # are proprio-only. Leave those states unchanged instead of hiding other bugs.
                 return state

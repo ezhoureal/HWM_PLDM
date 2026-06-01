@@ -97,6 +97,10 @@ of expensive L2-level MPC search at every replan step.
 This fast path is the natural way to evaluate (and collect traces for) any
 L2 policy you distill on the original 25-map diverse maze distribution.
 
+> **Next policy-improvement step**: use the fast path to collect closed-loop
+> policy failures, relabel those states with the full L2 planner, and retrain.
+> See [docs/l2_latent_policy_module_learnings.md](../docs/l2_latent_policy_module_learnings.md).
+
 ### Policy modules L1
 
 The L1 policy distills the expensive sub-trajectory planner used inside
