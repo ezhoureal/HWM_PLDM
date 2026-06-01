@@ -255,6 +255,14 @@ class Normalizer:
         if self.min_max_state:
             state = self.min_max_normalize_state(state)
         if self.image_based:  # if its image
+            if state.ndim < 3:
+                print(
+                    "skipping image state normalization for non-image state shape "
+                    f"{tuple(state.shape)} with image stats shape "
+                    f"{tuple(self.state_mean.shape)}"
+                )
+                return state
+
             adapted_mean = self.state_mean.view(-1, 1, 1).to(state.device)
             adapted_std = self.state_std.view(-1, 1, 1).to(state.device) + 1e-6
 
@@ -267,13 +275,26 @@ class Normalizer:
                 adapted_mean = adapted_mean[:state_channels]
                 adapted_std = adapted_std[:state_channels]
 
-            normalized_state = (state - adapted_mean) / adapted_std
+            try:
+                return (state - adapted_mean) / adapted_std
+            except RuntimeError as exc:
+                likely_image_state = state.ndim >= 4 or (
+                    state.ndim == 3 and state.shape[-2] > 8 and state.shape[-1] > 8
+                )
+                if likely_image_state:
+                    raise
+                print(
+                    "skipping image state normalization for non-image state shape "
+                    f"{tuple(state.shape)} with image stats shape "
+                    f"{tuple(self.state_mean.shape)}: {exc}"
+                )
+                # Fast no-image trace collection can reuse image-based stats while states
+                # are proprio-only. Leave those states unchanged instead of hiding other bugs.
+                return state
 
-            return normalized_state
-        else:
-            return (state - self.state_mean.to(state.device)) / self.state_std.to(
-                state.device
-            )
+        return (state - self.state_mean.to(state.device)) / self.state_std.to(
+            state.device
+        )
 
     def normalize_l2_action(self, l2_action: torch.Tensor) -> torch.Tensor:
         return self.normalize_action(l2_action)
@@ -430,7 +451,7 @@ class Normalizer:
 
     @classmethod
     def load(cls, path):
-        state = torch.load(path, map_location="cpu")
+        state = torch.load(path, map_location="cpu", weights_only=False)
         return cls(
             state["state_mean"],
             state["state_std"],

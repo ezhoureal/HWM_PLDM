@@ -281,6 +281,9 @@ class Trainer:
         print("Inferred input_dim:", input_dim)
         if len(input_dim) == 1:
             input_dim = input_dim[0]
+        if isinstance(input_dim, (int, np.integer)) and getattr(config.hjepa.level1.backbone, "channels", 0) > 0 and config.load_checkpoint_path:
+            # fast no-image trace collection path: ds is proprio-only (no images.npy) but ckpt is image-based; build image arch to match ckpt
+            input_dim = (3, 98, 98)
 
         ppos_dim = proprio_pos.shape[-1] if proprio_pos is not None else 0
         pvel_dim = (
@@ -358,7 +361,7 @@ class Trainer:
         if latest_checkpoint is None:
             return False
         print("resuming from", latest_checkpoint)
-        checkpoint = torch.load(latest_checkpoint)
+        checkpoint = torch.load(latest_checkpoint, weights_only=False)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.epoch = checkpoint["epoch"]
@@ -377,7 +380,7 @@ class Trainer:
             else:
                 load_checkpoint_path = self.config.load_checkpoint_path
 
-            checkpoint = torch.load(load_checkpoint_path)
+            checkpoint = torch.load(load_checkpoint_path, weights_only=False)
             state_dict = checkpoint["model_state_dict"]
             # remove "_orig_mod." prefix from the keys
             state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}

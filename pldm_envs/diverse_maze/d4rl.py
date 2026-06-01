@@ -59,7 +59,8 @@ class D4RLDataset(torch.utils.data.Dataset):
     def _prepare_saved_ds(self):
         assert self.config.path is not None
         print("loading saved dataset from", self.config.path)
-        self.splits = torch.load(self.config.path)
+        # Post torch 2.6+ we must explicitly allow pickle for our trusted local .p datasets
+        self.splits = torch.load(self.config.path, weights_only=False)
 
         max_n_steps = max(
             self.l2_n_steps_total,
