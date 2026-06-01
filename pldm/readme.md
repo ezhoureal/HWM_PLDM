@@ -46,6 +46,57 @@ python train.py --config configs/diverse_maze/icml/large_diverse_25maps.yaml --v
 The policy-compilation path now uses shared latent-policy and trace-collector
 modules for both hierarchy levels.
 
+### Fast Proprio-Only Path for L2 Policy Eval on OG (25maps) Data
+
+**Key insight**: For *planning evaluation* (and trace collection) of a trained L2 policy
+on the in-distribution og/25maps dataset, you do **not** need any pre-rendered
+`images.npy` files.
+
+- The offline datasets (for normalizers and any probing) can be pointed at
+  `maze2d_large_diverse_25maps/data.p` with `images_path: null`. Only proprio
+  (position + velocity) statistics are needed.
+- Live environments created from the `starts_targets_*_trace_*.pt` files render
+  images **on the fly** during rollouts when `image_obs=true` (exactly as done
+  during the original hierarchical trace collection runs).
+- This is a much lighter "fast path" that completely skips the heavy image
+  pre-rendering and caching step.
+
+This is how the original `og_trace_*` collection runs were performed.
+
+Example command to run the full L2 policy planning eval on the og (25maps) medium+hard
+splits using a trained policy (e.g. the custom combined v2 policy):
+
+```bash
+python train.py \
+  --config pldm/configs/diverse_maze/icml/large_diverse_25maps_l2.yaml \
+  --values \
+    output_dir=l2_og_fast_policy_eval_v2 \
+    "data.d4rl_config.path=${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps/data.p" \
+    "data.d4rl_config.images_path=null" \
+    "eval_cfg.probing.train_path=${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps/data.p" \
+    "eval_cfg.probing.train_images_path=null" \
+    "eval_cfg.probing.val_path=${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps/data.p" \
+    "eval_cfg.probing.val_images_path=null" \
+    "eval_cfg.probing.load_prober=false" \
+    "eval_cfg.probing.load_prober_l2=false" \
+    "eval_cfg.probing.probe_preds=false" \
+    "eval_cfg.probing.epochs=0" \
+    "eval_cfg.h_d4rl_planning.use_l2_policy=true" \
+    "eval_cfg.h_d4rl_planning.l2_policy_checkpoint_path=${root_path}/checkpoint/policies/l2_latent_custom_combined_v2.pt" \
+    "eval_cfg.h_d4rl_planning.data_path=${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps" \
+    "eval_cfg.h_d4rl_planning.levels=medium,hard" \
+    "eval_cfg.h_d4rl_planning.medium.set_start_target_path=${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps/starts_targets_9_12_trace_n500_seed0.pt" \
+    "eval_cfg.h_d4rl_planning.hard.set_start_target_path=${root_path}/pldm_envs/diverse_maze/datasets/maze2d_large_diverse_25maps/starts_targets_13_16_trace_n300_seed0.pt" \
+    "eval_cfg.h_d4rl_planning.image_obs=true"
+```
+
+The resulting `planning_l2_mpc_report_l2_d4rl_medium` (and hard) files contain the
+success rates, avg/median steps, etc., using the fast reactive L2 policy instead
+of expensive L2-level MPC search at every replan step.
+
+This fast path is the natural way to evaluate (and collect traces for) any
+L2 policy you distill on the original 25-map diverse maze distribution.
+
 ### Policy modules L1
 
 The L1 policy distills the expensive sub-trajectory planner used inside
